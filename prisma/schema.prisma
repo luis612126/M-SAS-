@@ -1,0 +1,664 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  SALES_REP
+  MARKETER
+  CUSTOMER_SUPPORT
+  GUEST
+}
+
+enum ClientStatus {
+  LEAD
+  PROSPECT
+  CUSTOMER
+  INACTIVE
+}
+
+enum LeadSource {
+  WEBSITE
+  SOCIAL_MEDIA
+  REFERRAL
+  EMAIL_CAMPAIGN
+  PAID_AD
+  EVENT
+  OTHER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  UNQUALIFIED
+  CONVERTED
+}
+
+enum LeadIntent {
+  INFORMATIONAL
+  EVALUATION
+  PURCHASE
+  REPEAT_PURCHASE
+}
+
+enum ConversationStatus {
+  OPEN
+  CLOSED
+  PENDING
+  SPAM
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM
+}
+
+enum CampaignType {
+  EMAIL
+  SMS
+  SOCIAL_MEDIA
+  WEB_PUSH
+  AUTOMATED_WORKFLOW
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+  CANCELLED
+}
+
+enum RelatedEntityType {
+  LEAD
+  CLIENT
+  CONVERSATION
+  CAMPAIGN
+}
+
+enum IntegrationProvider {
+  FACEBOOK
+  INSTAGRAM
+  WHATSAPP
+  TIKTOK
+  GOOGLE_ADS
+  GOOGLE_ANALYTICS
+  YOUTUBE
+  LINKEDIN
+  GMAIL
+  WEBHOOK
+  WEB_CHAT
+}
+
+enum IntegrationStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+  ERROR
+}
+
+enum AiSuggestionType {
+  REPLY_SUGGESTION
+  LEAD_CLASSIFICATION
+  NEXT_ACTION
+  CONTENT_IDEA
+  CAMPAIGN_OPTIMIZATION
+}
+
+model Organization {
+  id          String              @id @default(cuid())
+  name        String
+  slug        String              @unique
+  logo        String?
+  plan        String              @default("free")
+  settings    Json                @default("{}")
+  isActive    Boolean             @default(true)
+  users       User[]
+  clients     Client[]
+  leads       Lead[]
+  conversations Conversation[]
+  campaigns   Campaign[]
+  tasks       Task[]
+  integrations Integration[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@map("organizations")
+}
+
+model User {
+  id               String              @id @default(cuid())
+  email            String              @unique
+  name             String
+  avatar           String?
+  role             UserRole
+  organizationId   String
+  isActive         Boolean             @default(true)
+  lastLoginAt      DateTime?
+  permissions      Json?
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdLeads     Lead[]              @relation("CreatedLeads")
+  assignedLeads    Lead[]              @relation("AssignedLeads")
+  conversations    Conversation[]
+  tasks            Task[]
+  integrations     Integration[]
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@map("users")
+  @@index([organizationId])
+}
+
+model Client {
+  id              String              @id @default(cuid())
+  name            String
+  email           String?
+  phone           String?
+  company         String?
+  industry        String?
+  website         String?
+  notes           String?
+  status          ClientStatus        @default(LEAD)
+  tags            String[]
+  ownerId         String
+  organizationId  String
+  contacts        ClientContact[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  owner          User                @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("clients")
+  @@index([organizationId])
+  @@index([ownerId])
+}
+
+model ClientContact {
+  id         String       @id @default(cuid())
+  firstName  String
+  lastName   String
+  email      String?
+  phone      String?
+  position   String?
+  clientId   String
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  client     Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("client_contacts")
+  @@index([clientId])
+}
+
+model Lead {
+  id               String              @id @default(cuid())
+  firstName        String
+  lastName         String
+  email            String?
+  phone            String?
+  source           LeadSource
+  status           LeadStatus          @default(NEW)
+  score            Int                 @default(0)
+  intent           LeadIntent?
+  campaignId       String?
+  assignedToId     String?
+  organizationId   String
+  activities       LeadActivity[]
+  conversations    Conversation[]
+  createdById      String
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  createdBy      User                @relation("CreatedLeads", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedTo     User?               @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
+  campaign       Campaign?           @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("leads")
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([assignedToId])
+  @@index([campaignId])
+}
+
+model LeadActivity {
+  id          String       @id @default(cuid())
+  type        String
+  description String
+  metadata    Json?
+  leadId      String
+  userId      String
+  createdAt   DateTime     @default(now())
+
+  lead       Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("lead_activities")
+  @@index([leadId])
+  @@index([userId])
+}
+
+model Conversation {
+  id              String              @id @default(cuid())
+  title           String
+  participants    String[]
+  status          ConversationStatus  @default(OPEN)
+  priority        Priority            @default(MEDIUM)
+  tags            String[]
+  lastMessageAt   DateTime
+  assignedToId    String?
+  organizationId  String
+  messages        Message[]
+  leadId          String?
+  clientId        String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  assignedTo   User?         @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  client       Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@map("conversations")
+  @@index([organizationId])
+  @@index([assignedToId])
+  @@index([leadId])
+  @@index([clientId])
+}
+
+model Message {
+  id              String              @id @default(cuid())
+  content         String
+  senderId        String
+  conversationId  String
+  messageType     MessageType         @default(TEXT)
+  metadata        Json?
+  organizationId  String
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  sender         User                @relation(fields: [senderId], references: [id], onDelete: Restrict)
+  conversation   Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([organizationId])
+}
+
+model Campaign {
+  id              String              @id @default(cuid())
+  name            String
+  description     String?
+  type            CampaignType
+  status          CampaignStatus      @default(DRAFT)
+  audience        Json                @default("{}")
+  startDate       DateTime
+  endDate         DateTime
+  budget          Float?
+  metrics         Json                @default("{}")
+  createdBy       String
+  organizationId  String
+  leads           Lead[]
+  tasks           Task[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  creator      User                @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("campaigns")
+  @@index([organizationId])
+  @@index([createdBy])
+}
+
+model CampaignMetric {
+  id           String   @id @default(cuid())
+  campaignId   String
+  metricName   String
+  value        Float
+  date         DateTime
+  createdAt    DateTime @default(now())
+
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("campaign_metrics")
+  @@index([campaignId])
+  @@index([date])
+}
+
+model ContentItem {
+  id              String              @id @default(cuid())
+  title           String
+  content         String
+  type            String
+  status          String              @default("draft")
+  scheduledAt     DateTime?
+  publishedAt     DateTime?
+  createdBy       String
+  organizationId  String
+  campaignId      String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  creator      User                @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     Campaign?           @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@map("content_items")
+  @@index([organizationId])
+  @@index([createdBy])
+  @@index([campaignId])
+}
+
+model Task {
+  id                    String              @id @default(cuid())
+  title                 String
+  description           String?
+  status                TaskStatus          @default(TODO)
+  priority              Priority            @default(MEDIUM)
+  dueDate               DateTime?
+  assignedToId          String?
+  relatedEntityId       String?
+  relatedEntityType     RelatedEntityType?
+  organizationId        String
+  campaignId            String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  assignedTo     User?               @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign       Campaign?           @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@map("tasks")
+  @@index([organizationId])
+  @@index([assignedToId])
+  @@index([campaignId])
+}
+
+model Integration {
+  id             String              @id @default(cuid())
+  name           String
+  provider       IntegrationProvider
+  status         IntegrationStatus   @default(DISCONNECTED)
+  settings       Json                @default("{}")
+  connectedBy    String
+  organizationId String
+  tokens         IntegrationToken[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  connectedUser  User                @relation(fields: [connectedBy], references: [id], onDelete: Restrict)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("integrations")
+  @@index([organizationId])
+  @@index([connectedBy])
+  @@index([provider])
+}
+
+model IntegrationToken {
+  id             String       @id @default(cuid())
+  integrationId  String
+  tokenType      String
+  encryptedToken String
+  expiresAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  integration    Integration  @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@map("integration_tokens")
+  @@index([integrationId])
+}
+
+model Automation {
+  id              String              @id @default(cuid())
+  name            String
+  description     String?
+  triggerEvent    String
+  conditions      Json                @default("[]")
+  actions         Json                @default("[]")
+  isActive        Boolean             @default(false)
+  createdBy       String
+  organizationId  String
+  runs            AutomationRun[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  creator      User                @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("automations")
+  @@index([organizationId])
+  @@index([createdBy])
+}
+
+model AutomationRun {
+  id            String       @id @default(cuid())
+  automationId  String
+  status        String       @default("pending")
+  executedAt    DateTime     @default(now())
+  results       Json?
+
+  automation    Automation   @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@map("automation_runs")
+  @@index([automationId])
+  @@index([executedAt])
+}
+
+model KnowledgeBase {
+  id              String              @id @default(cuid())
+  name            String
+  description     String?
+  isPublic        Boolean             @default(false)
+  organizationId  String
+  documents       KnowledgeDocument[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("knowledge_bases")
+  @@index([organizationId])
+}
+
+model KnowledgeDocument {
+  id              String              @id @default(cuid())
+  title           String
+  content         String
+  documentType    String              @default("text")
+  sourceUrl       String?
+  knowledgeBaseId String
+  chunks          KnowledgeChunk[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  knowledgeBase KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+
+  @@map("knowledge_documents")
+  @@index([knowledgeBaseId])
+}
+
+model KnowledgeChunk {
+  id                  String       @id @default(cuid())
+  content             String
+  embeddingVector     Float[]      @db.FloatArray
+  documentId          String
+  chunkIndex          Int
+  similarityScore     Float?
+  createdAt           DateTime     @default(now())
+
+  document            KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@map("knowledge_chunks")
+  @@index([documentId])
+  @@index([chunkIndex])
+}
+
+model AiPrompt {
+  id              String              @id @default(cuid())
+  name            String
+  template        String
+  category        String
+  isDefault       Boolean             @default(false)
+  organizationId  String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  organization    Organization?       @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@map("ai_prompts")
+  @@index([organizationId])
+  @@index([category])
+}
+
+model AiSuggestion {
+  id              String              @id @default(cuid())
+  type            AiSuggestionType
+  content         String
+  confidence      Float               @default(0.5)
+  context         Json                @default("{}")
+  applied         Boolean             @default(false)
+  appliedBy       String?
+  organizationId  String
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  appliedUser     User?               @relation(fields: [appliedBy], references: [id], onDelete: SetNull)
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("ai_suggestions")
+  @@index([organizationId])
+  @@index([appliedBy])
+  @@index([type])
+}
+
+model AiDecisionLog {
+  id              String              @id @default(cuid())
+  decisionType    String
+  input           Json
+  output          Json
+  confidence      Float
+  reasoning       String?
+  userId          String
+  organizationId  String
+  createdAt       DateTime            @default(now())
+
+  user            User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("ai_decision_logs")
+  @@index([organizationId])
+  @@index([userId])
+  @@index([decisionType])
+}
+
+model Notification {
+  id              String              @id @default(cuid())
+  title           String
+  content         String
+  type            String
+  priority        Priority            @default(MEDIUM)
+  readStatus      Boolean             @default(false)
+  recipientId     String
+  organizationId  String
+  relatedEntityId String?
+  relatedEntityType String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  recipient    User                @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+  @@index([recipientId])
+  @@index([organizationId])
+  @@index([readStatus])
+}
+
+model AuditLog {
+  id              String              @id @default(cuid())
+  action          String
+  entity          String
+  entityId        String
+  oldValues       Json?
+  newValues       Json?
+  userId          String
+  organizationId  String
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime            @default(now())
+
+  user            User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+  @@index([organizationId])
+  @@index([userId])
+  @@index([entity])
+  @@index([createdAt])
+}
+
+model Tag {
+  id              String              @id @default(cuid())
+  name            String
+  color           String?
+  organizationId  String
+  createdAt       DateTime            @default(now())
+
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("tags")
+  @@index([organizationId])
+  @@unique([name, organizationId])
+}
+
+model FileAsset {
+  id              String              @id @default(cuid())
+  filename        String
+  originalName    String
+  mimeType        String
+  size            Int
+  url             String
+  publicId        String
+  uploadType      String              @default("general")
+  uploadedById    String
+  organizationId  String
+  createdAt       DateTime            @default(now())
+
+  uploadedBy     User                @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("file_assets")
+  @@index([organizationId])
+  @@index([uploadedById])
+}
